@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Boga Bible AI - Universal Player</title>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_twelve@1.1/RIDIBatang.css">
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        :root {
+            --sidebar-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            --primary: #4facfe; --accent: #ff7e5f; --hymn-green: #27ae60;
+            --bible-font: 'RIDIBatang', serif; --ui-font: 'Pretendard', sans-serif;
+            --highlight-color: #fff9c4;
+        }
+        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; font-family: var(--ui-font); background: #f0f2f5; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+        /* 상단 메뉴바 */
+        header#global-menu-bar {
+            height: calc(60px + env(safe-area-inset-top));
+            background: #1e3c72; color: white;
+            display: flex; align-items: flex-end; justify-content: center;
+            padding-bottom: 10px; gap: 15px; z-index: 5000;
+        }
+        .top-nav-btn {
+            background: rgba(255,255,255,0.2); border: none; color: white;
+            padding: 8px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+        }
+        .top-nav-btn.active { background: var(--accent); }
+
+        /* 메인 컨테이너 */
+        #app-container { flex: 1; display: flex; background: rgba(255,255,255,0.98); margin: 10px; border-radius: 20px; overflow: hidden; transition: 0.3s; }
+        
+        aside#nav-sidebar { width: 260px; background: var(--sidebar-gradient); display: flex; flex-direction: column; color: white; }
+        main#reading-area { flex: 1; display: flex; flex-direction: column; background: white; border-right: 1px solid #eee; position: relative; }
+        aside#right-dash { width: 450px; background: #f9f9f9; display: flex; flex-direction: column; }
+
+        /* 성경 본문 및 하이라이트 */
+        .bible-viewer { flex: 1; overflow-y: auto; padding: 25px 8%; scroll-behavior: smooth; }
+        .v-line { 
+            display: flex; margin-bottom: 8px; font-size: 1.3rem; line-height: 1.5; 
+            font-family: var(--bible-font); color: #2c3e50; transition: background-color 0.3s;
+            border-radius: 5px; padding: 2px 5px;
+        }
+        .v-line.reading-now { background-color: var(--highlight-color); box-shadow: 0 0 5px rgba(0,0,0,0.1); }
+        .v-num { min-width: 40px; color: var(--primary); font-weight: 800; font-size: 0.9rem; margin-top: 4px; }
+
+        /* [수정] 통독 플레이어 바 (모든 모드에서 하단에 고정) */
+        #tts-controller {
+            height: 70px; background: #fdfdfd; border-top: 1px solid #eee;
+            display: flex; align-items: center; justify-content: space-around; padding: 0 20px;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .player-btn { border: none; background: var(--primary); color: white; padding: 10px 20px; border-radius: 10px; font-weight: bold; cursor: pointer; }
+        .play-main-btn { background: var(--hymn-green); width: 50px; height: 50px; border-radius: 50%; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; }
+
+        /* 모드 전환 스타일 */
+        body.mode-bible #nav-sidebar, body.mode-bible #right-dash { display: none; }
+        body.mode-bible #app-container { margin: 0; border-radius: 0; }
+        body.mode-hymn #nav-sidebar, body.mode-hymn #reading-area { display: none; }
+        body.mode-hymn #right-dash { width: 100%; flex: 1; }
+        body.mode-hymn #tts-controller { display: none; } /* 찬송가 모드에서는 플레이어 숨김 */
+
+        /* 리스트 UI */
+        .book-btn { padding: 10px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.9rem; }
+        .book-btn.active { background: white; color: #1e3c72; font-weight: 700; }
+        .chap-box { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1); border-radius: 5px; cursor: pointer; font-size: 0.8rem; }
+        iframe { width: 100%; height: 100%; border: none; }
+    </style>
+</head>
+<body class="mode-home">
+
+<header id="global-menu-bar">
+    <button class="top-nav-btn active" id="btn-home" onclick="setAppMode('home')">홈버튼</button>
+    <button class="top-nav-btn" id="btn-bible" onclick="setAppMode('bible')">폰 성경읽기</button>
+    <button class="top-nav-btn" id="btn-hymn" onclick="setAppMode('hymn')">폰 찬송가</button>
+</header>
+
+<div id="app-container">
+    <aside id="nav-sidebar">
+        <div id="book-list" style="overflow-y:auto; flex:1;"></div>
+        <div id="chapter-grid" style="display:grid; grid-template-columns: repeat(5, 1fr); gap:4px; padding:10px; overflow-y:auto; height:200px; background:rgba(0,0,0,0.2);"></div>
+    </aside>
+
+    <main id="reading-area">
+        <header style="height:60px; border-bottom:1px solid #eee; display:flex; align-items:center; padding:0 25px;">
+            <div id="current-loc" style="font-weight:bold; color:#1e3c72;">말씀을 로드 중...</div>
+        </header>
+        <div class="bible-viewer" id="viewer">
+            <div id="render-target"></div>
+        </div>
+        
+        <!-- 통합 통독 플레이어 -->
+        <div id="tts-controller">
+            <button class="player-btn" onclick="moveChapter(-1)">이전장</button>
+            <button class="player-btn play-main-btn" onclick="toggleTTS()" id="tts-btn"><i class="fa-solid fa-play"></i></button>
+            <button class="player-btn" onclick="moveChapter(1)">다음장</button>
+        </div>
+    </main>
+
+    <aside id="right-dash">
+        <iframe src="https://m.blog.naver.com/csred7/80167470566"></iframe>
+    </aside>
+</div>
+
+<script>
+    const BIBLE_JSON = 'my_bible.json';
+    let bibleData = null;
+    let bIdx = 0, cIdx = 0;
+    let isReading = false;
+    const synth = window.speechSynthesis;
+    const nameMap = {"창":"창세기","출":"출애굽기","레":"레위기","민":"민수기","신":"신명기","수":"여호수아","삿":"사사기","룻":"룻기","삼상":"사무엘상","삼하":"사무엘하","왕상":"열왕기상","왕하":"열왕기하","대상":"역대상","대하":"역대하","스":"에스라","느":"느헤미야","에":"에스더","욥":"욥기","시":"시편","잠":"잠언","전":"전도서","아":"아가","사":"이사야","렘":"예레미야","애":"예레미야애가","겔":"에스겔","단":"단니엘","호":"호세아","욜":"요엘","암":"아모스","옵":"오바댜","요나":"요나","미":"미가","나":"나훔","합":"하박국","습":"스바냐","학":"학개","슥":"스가랴","말":"말라기","마":"마태복음","막":"마가복음","눅":"누가복음","요":"요한복음","행":"사도행전","롬":"로마서","고전":"고린도전서","고후":"고린도후서","갈":"갈라디아서","엡":"에베소서","빌":"빌립보서","골":"골로새서","살전":"데살로니가전서","살후":"데살로니가후서","딤전":"디모데전서","딤후":"디모데후서","딛":"디도서","몬":"빌레몬서","히":"히브리서","야":"야고보서","벧전":"베드로전서","벧후":"베드로후서","요일":"요한일서","요이":"요한이서","요삼":"요한삼서","유":"유다서","계":"요한계시록"};
+
+    async function init() {
+        try {
+            const res = await fetch(BIBLE_JSON);
+            bibleData = await res.json();
+            bibleData = bibleData.map(b => ({...b, full: nameMap[b.book_name] || b.book_name}));
+            renderBooks();
+            loadBook(0);
+        } catch (e) { console.error(e); }
+    }
+
+    function setAppMode(mode) {
+        document.body.className = 'mode-' + mode;
+        document.querySelectorAll('.top-nav-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('btn-' + mode).classList.add('active');
+        // 모드 전환 시에도 읽기 상태는 유지되지만 UI 꼬임 방지를 위해 스크롤만 초기화
+        document.getElementById('viewer').scrollTop = 0;
+    }
+
+    function renderBooks() {
+        const list = document.getElementById('book-list');
+        bibleData.forEach((b, i) => {
+            const div = document.createElement('div');
+            div.className = 'book-btn';
+            div.innerText = b.full;
+            div.onclick = () => loadBook(i);
+            list.appendChild(div);
+        });
+    }
+
+    function loadBook(i) {
+        bIdx = i;
+        document.querySelectorAll('.book-btn').forEach((btn, idx) => btn.classList.toggle('active', idx === i));
+        const grid = document.getElementById('chapter-grid');
+        grid.innerHTML = '';
+        bibleData[bIdx].chapters.forEach((_, ci) => {
+            const div = document.createElement('div');
+            div.className = 'chap-box';
+            div.innerText = ci + 1;
+            div.onclick = () => loadChapter(i, ci);
+            grid.appendChild(div);
+        });
+        loadChapter(i, 0);
+    }
+
+    function loadChapter(bi, ci) {
+        bIdx = bi; cIdx = ci;
+        const b = bibleData[bIdx];
+        document.getElementById('current-loc').innerText = `${b.full} ${cIdx + 1}장`;
+        let html = '';
+        b.chapters[cIdx].forEach((v, i) => {
+            html += `<div class="v-line" id="v-${i}"><div class="v-num">${i+1}</div><div class="v-txt">${v}</div></div>`;
+        });
+        document.getElementById('render-target').innerHTML = html;
+        document.getElementById('viewer').scrollTop = 0;
+        if(isReading) stopTTS(); // 장 이동 시 이전 낭독 중지
+    }
+
+    function moveChapter(step) {
+        let nC = cIdx + step;
+        if (nC < 0) { if (bIdx > 0) loadChapter(bIdx - 1, bibleData[bIdx-1].chapters.length - 1); }
+        else if (nC >= bibleData[bIdx].chapters.length) { if (bIdx < bibleData.length - 1) loadChapter(bIdx + 1, 0); }
+        else loadChapter(bIdx, nC);
+    }
+
+    function toggleTTS() { isReading ? stopTTS() : startReading(); }
+
+    async function startReading() {
+        isReading = true;
+        document.getElementById('tts-btn').innerHTML = `<i class="fa-solid fa-stop"></i>`;
+        const verses = bibleData[bIdx].chapters[cIdx];
+
+        for (let i = 0; i < verses.length; i++) {
+            if (!isReading) break;
+
+            document.querySelectorAll('.v-line').forEach(el => el.classList.remove('reading-now'));
+            const currentVerse = document.getElementById(`v-${i}`);
+            if (currentVerse) {
+                currentVerse.classList.add('reading-now');
+                currentVerse.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+
+            await new Promise((resolve) => {
+                const utter = new SpeechSynthesisUtterance(verses[i]);
+                utter.lang = 'ko-KR';
+                utter.onend = resolve;
+                synth.speak(utter);
+            });
+        }
+        if (isReading) stopTTS();
+    }
+
+    function stopTTS() {
+        synth.cancel();
+        isReading = false;
+        document.getElementById('tts-btn').innerHTML = `<i class="fa-solid fa-play"></i>`;
+        document.querySelectorAll('.v-line').forEach(el => el.classList.remove('reading-now'));
+    }
+
+    init();
+</script>
+</body>
+</html>
